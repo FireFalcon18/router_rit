@@ -232,18 +232,30 @@ public class Routing {
             return null;
         }
         
-        // Prepare a temporary routing table aux with entries to send to the neighbour
-        RoutingTable aux= tab;  // Default implementation - always use the full routing table
-        
-        // TO MODIFY IN STEPS 5 (split horizon) and 6 (holddown)
-        // Implement here the split horizon and hold down hacks
-        // You must remove from the vector all destinations that are not accessible!
-        //
-        // Start by creating a new routing table object and add only the the valid entries
-        // RoutingTable aux= new RoutingTable ();
-        // ...
+        RoutingTable aux;
 
-        // Return a vector with the aux routing table contents
+        if (!splitHorizon) {
+            aux = tab;
+        } else {
+            // STEP 5: Split Horizon com Poison Reverse
+            aux = new RoutingTable();
+
+            Entry[] entries = tab.get_Entry_vector();
+            if (entries != null) {
+                for (Entry entry : entries) {
+                    if (entry instanceof RouteEntry) {
+                        RouteEntry re = (RouteEntry) entry;
+                        // Comparação correta para o tipo char (==)
+                        if (re.next_hop == n.Name()) {
+                            aux.add_route(new RouteEntry(re.dest, re.next_hop, Router.MAX_DISTANCE, win));
+                        } else {
+                            aux.add_route(new RouteEntry(re.dest, re.next_hop, re.dist, win));
+                        }
+                    }
+                }
+            }
+        }
+
         return (aux.size() > 0) ? aux.get_Entry_vector() : null;
     }
 
