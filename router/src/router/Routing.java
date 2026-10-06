@@ -8,16 +8,15 @@
  * Routing_process objects, and handles DATA packets
  *
  * @author  Luis Bernardo
- * @author  ? - student 1
- * @author  ? - student 2
+ * @author  ? - Andre Patricio
  */
 package router;
 
-import java.util.*;
-import java.net.*;
-import java.io.*;
-import javax.swing.*;
 import java.awt.event.*;
+import java.io.*;
+import java.net.*;
+import java.util.*;
+import javax.swing.*;
 
 /**
  * Encapsulates the Routing functions, hosting multiple instances of
@@ -263,19 +262,21 @@ public class Routing {
             return false;
         }
 
-        Log("Routing.send_local_ROUTE() not implemented\n");
         // COMPLETE IN STEP 1 
         // send the local vector to all the neighbor routers, one by one
         //    using the methods above (prepare_vec_for_neighbour and send_local_ROUTE_to_neighbour)
 
-        // send local vector
-        // for (Neighbour pt : neig.values()) {
-        //     if (pt.is_valid()) {
-        //         ... use  prepare_vec_for_neighbour and send_local_ROUTE_to_neighbour ...
-        //     }
-        // }
-        
-       return true; // Successful transmission
+        //send local vector
+        for (Neighbour pt : neig.values()) {
+            if (pt.is_valid()) {
+                Entry[] vec = prepare_vec_for_neighbour(pt);
+                if (vec != null){
+                    send_local_ROUTE_to_neighbour(pt, vec);
+                }
+                
+            }
+        }
+        return true; // Successful transmission
     }
 
     /**
@@ -342,10 +343,11 @@ public class Routing {
             }
 
             // Update Router vector
-            Log("Routing.process_ROUTE not implemented: ROUTE vector not stored\n");
             
             // STEP 3:
-            //   Put here the code to store the vector received in the neighbour object associated            
+            //   Put here the code to store the vector received in the neighbour object associated
+            pt.update_vec(data, TTL);  
+
             return true;
         } catch (IOException e) {
             Log("\nERROR - Packet too short\n");
@@ -407,10 +409,42 @@ public class Routing {
         tab.add_route(new RouteEntry(local_name /* destination*/, 
                 ' ' /* next hop*/, 0 /* distance */, win));
 
-        Log("Routing.update_routing_table not implemented\n");
         // Implement here the distance vector algorithm:            
         // STEP 4:
         //      Implement the basic DV algorithm
+
+        for (Neighbour n : neig.values()) 
+        {
+            if (n.is_valid() && n.vec_valid()) 
+            {
+                int linkCost = n.Dist();
+                RouteEntry reNeighbour = tab.get_RouteEntry(n.Name());
+                if (reNeighbour == null || reNeighbour.dist > linkCost) 
+                {
+                    tab.add_route(new RouteEntry(n.Name(), n.Name(), n.Dist(), win));
+                }
+
+                for (Entry e : n.Vec()) 
+                {
+                    int newDist = e.dist + n.Dist();
+
+                    if (newDist < Router.MAX_DISTANCE) 
+                    {
+                        RouteEntry existingRoute = tab.get_RouteEntry(e.dest);
+
+                        if (existingRoute == null) 
+                        {
+                            tab.add_route(new RouteEntry(e.dest, n.Name(), newDist, win));
+                        } 
+                        else if (newDist < existingRoute.dist) 
+                        {
+                            tab.add_route(new RouteEntry(e.dest, n.Name(), newDist, win));
+                        }
+                    }
+                }
+            }
+        }
+
         // STEP 6:
         //      Implement the hold down method, with the detection of hold down conditions
         //          and the modification to the RouteEntry, to count the hold down time
@@ -461,16 +495,23 @@ public class Routing {
      * Run the timer responsible for sending periodic ROUTE packets to routers
      */
     private void start_announce_timer() {
-        Log("Routing.start_announce_timer() not implemented\n");
         
         // STEP 2:
         // Place here the code to create the timer_announce object and define the
         //    timeout event handler
         // It should run periodically with a period of "period * 1000"; 
         // For each iteration it should update the routing table and send the local ROUTE
-        
-        // timer_announce = ...
-        // timer_announce.start();
+
+        timer_announce = new javax.swing.Timer(period * 1000, new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                update_routing_table();
+                send_local_ROUTE();
+            }
+        }
+        );
+
+        timer_announce.start();
     }
 
     /**
