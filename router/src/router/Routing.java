@@ -399,12 +399,22 @@ public class Routing {
         if (!tab.is_valid())
             return false;
         
-        Log("Routing.handle_holddown_timeout not implemented yet\n");
-        
         // COMPLETE IN STEP 6 
         // Place here the code to handle the end of a hold down state from route re
         // The route entry is no longer blocked; new routes can be discovered 
-        return true;
+
+        Log("Holddown ended for destination: " + re.dest + "\n");
+        
+        // Para o timer explicitamente na entrada correspondente na tabela atual
+        RouteEntry currentRe = tab.get_RouteEntry(re.dest);
+        if (currentRe != null) {
+            currentRe.stop_holddown(false);
+        }
+        
+        update_routing_table();
+        update_routing_window();
+
+        return false;
     }
 
     /**
@@ -462,6 +472,51 @@ public class Routing {
         //          and the modification to the RouteEntry, to count the hold down time
         //      This step is the most challenging: You need to keep the RouteEntries in 
         //          holddown state while the new table is being created
+
+        if (holddown) {
+            Iterator<RouteEntry> it = baktab.iterator();
+            while (it != null && it.hasNext()) {
+                RouteEntry oldRe = it.next();
+                if (oldRe.dest == local_name) continue;
+
+                RouteEntry newRe = tab.get_RouteEntry(oldRe.dest);
+
+                if (oldRe.is_holddown()) {
+                    long remainingTime = oldRe.holddown_ending_time();
+                    if (remainingTime > 0) {
+                        // Se ainda está em holddown, mantemos o oldRe (bloqueado a MAX_DISTANCE)
+                        tab.add_route(oldRe);
+                    } else {
+                        // O temporizador expirou! Paramos o holddown.
+                        oldRe.stop_holddown(false);
+                        // Ao não fazer 'continue' aqui, deixamos que a rota seja reavaliada 
+                        // imediatamente pelo algoritmo DV na tabela atual (tab), recolhendo 
+                        // logo a rota alternativa via C se ela já estiver disponível!
+                    }
+                    continue;
+                } 
+                
+                // Avaliação para rotas normais estáveis que entram em holddown
+                if (oldRe.dist < Router.MAX_DISTANCE) {
+                    boolean disappeared = (newRe == null || newRe.dist >= Router.MAX_DISTANCE);
+                    boolean worsened = (newRe != null && newRe.dist > oldRe.dist);
+
+                    if (disappeared || worsened) {
+                        if (newRe != null) {
+                            newRe.dist = Router.MAX_DISTANCE;
+                            newRe.next_hop = ' ';
+                            newRe.start_holddown(holddown_time, this);
+                        } else {
+                            RouteEntry heldRoute = new RouteEntry(oldRe);
+                            heldRoute.dist = Router.MAX_DISTANCE;
+                            heldRoute.next_hop = ' ';
+                            heldRoute.start_holddown(holddown_time, this);
+                            tab.add_route(heldRoute);
+                        }
+                    }
+                }
+            }
+        }
         
         // Update the Routing table in the GUI 
         update_routing_window();
