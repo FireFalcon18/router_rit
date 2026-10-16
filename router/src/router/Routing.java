@@ -241,11 +241,16 @@ public class Routing {
             aux = new RoutingTable();
 
             Entry[] entries = tab.get_Entry_vector();
+
+            // 1. Verifica se existem entradas e percorre-as uma a uma
             if (entries != null) {
                 for (Entry entry : entries) {
+                    // 2. Garante que a entrada é do tipo RouteEntry e faz o cast
                     if (entry instanceof RouteEntry) {
                         RouteEntry re = (RouteEntry) entry;
-                        // Comparação correta para o tipo char (==)
+                        
+                        // 3. Split Horizon com Poison Reverse: se o next hop for o vizinho, 
+                        // envia distância máxima (infinito); caso contrário, envia a distância normal
                         if (re.next_hop == n.Name()) {
                             aux.add_route(new RouteEntry(re.dest, re.next_hop, Router.MAX_DISTANCE, win));
                         } else {
@@ -403,9 +408,10 @@ public class Routing {
         // Place here the code to handle the end of a hold down state from route re
         // The route entry is no longer blocked; new routes can be discovered 
 
+        // 1. Regista no log que o temporizador de holddown terminou para este destino
         Log("Holddown ended for destination: " + re.dest + "\n");
         
-        // Para o timer explicitamente na entrada correspondente na tabela atual
+        // 2. Procura a entrada na tabela atual e desativa o estado de holddown sem atualizar recursivamente
         RouteEntry currentRe = tab.get_RouteEntry(re.dest);
         if (currentRe != null) {
             currentRe.stop_holddown(false);
@@ -435,10 +441,12 @@ public class Routing {
         // STEP 4:
         //      Implement the basic DV algorithm
 
+        // 1. Percorre todos os vizinhos para aplicar o algoritmo de Vetor de Distância
         for (Neighbour n : neig.values()) 
         {
             if (n.is_valid() && n.vec_valid()) 
             {
+                // 2. Avalia e adiciona/atualiza a rota direta para o próprio vizinho
                 int linkCost = n.Dist();
                 RouteEntry reNeighbour = tab.get_RouteEntry(n.Name());
                 if (reNeighbour == null || reNeighbour.dist > linkCost) 
@@ -446,10 +454,12 @@ public class Routing {
                     tab.add_route(new RouteEntry(n.Name(), n.Name(), n.Dist(), win));
                 }
 
+                // 3. Processa as rotas anunciadas no vetor do vizinho (Bellman-Ford)
                 for (Entry e : n.Vec()) 
                 {
                     int newDist = e.dist + n.Dist();
 
+                    // 4. Se a distância for válida, verifica se melhora a tabela existente
                     if (newDist < Router.MAX_DISTANCE) 
                     {
                         RouteEntry existingRoute = tab.get_RouteEntry(e.dest);
@@ -474,6 +484,8 @@ public class Routing {
         //          holddown state while the new table is being created
 
         if (holddown) {
+
+            // Percorre todas as entradas da tabela anterior (baktab)
             Iterator<RouteEntry> it = baktab.iterator();
             while (it != null && it.hasNext()) {
                 RouteEntry oldRe = it.next();
@@ -481,32 +493,32 @@ public class Routing {
 
                 RouteEntry newRe = tab.get_RouteEntry(oldRe.dest);
 
+                // 1. Se a rota já se encontrava em estado de holddown
                 if (oldRe.is_holddown()) {
                     long remainingTime = oldRe.holddown_ending_time();
                     if (remainingTime > 0) {
-                        // Se ainda está em holddown, mantemos o oldRe (bloqueado a MAX_DISTANCE)
+                        // Mantém a rota antiga bloqueada na tabela enquanto o temporizador não expirar
                         tab.add_route(oldRe);
                     } else {
-                        // O temporizador expirou! Paramos o holddown.
+                        // O tempo de espera esgotou-se, termina o holddown com segurança
                         oldRe.stop_holddown(false);
-                        // Ao não fazer 'continue' aqui, deixamos que a rota seja reavaliada 
-                        // imediatamente pelo algoritmo DV na tabela atual (tab), recolhendo 
-                        // logo a rota alternativa via C se ela já estiver disponível!
                     }
                     continue;
                 } 
                 
-                // Avaliação para rotas normais estáveis que entram em holddown
+                // 2. Avaliação de rotas estáveis que precisam de entrar em holddown (desapareceram ou pioraram)
                 if (oldRe.dist < Router.MAX_DISTANCE) {
                     boolean disappeared = (newRe == null || newRe.dist >= Router.MAX_DISTANCE);
                     boolean worsened = (newRe != null && newRe.dist > oldRe.dist);
 
                     if (disappeared || worsened) {
+                        // Atualiza a nova rota para distância máxima e inicia o temporizador de holddown
                         if (newRe != null) {
                             newRe.dist = Router.MAX_DISTANCE;
                             newRe.next_hop = ' ';
                             newRe.start_holddown(holddown_time, this);
                         } else {
+                            // Se a rota desapareceu por completo, clona-a, bloqueia-a e adiciona-a à tabela
                             RouteEntry heldRoute = new RouteEntry(oldRe);
                             heldRoute.dist = Router.MAX_DISTANCE;
                             heldRoute.next_hop = ' ';
